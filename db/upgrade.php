@@ -49,7 +49,7 @@ function xmldb_local_reminders_upgrade($oldversion) {
 
     // Moodle v2.2.0 release upgrade line
     // Put any upgrade step following this
-    
+
     if ($oldversion < 2014121301) {
 
         // Define table local_reminders_course to be created.
@@ -74,6 +74,22 @@ function xmldb_local_reminders_upgrade($oldversion) {
         // Reminders savepoint reached.
         upgrade_plugin_savepoint(true, 2014121301, 'local', 'reminders');
     }
+
+    if ($oldversion < 2017022300) {
+
+        // Define field enabled to be added to local_reminders_course.
+        $table = new xmldb_table('local_reminders_course');
+        $field = new xmldb_field('enabled', XMLDB_TYPE_INTEGER, '2', null, XMLDB_NOTNULL, null, '0', 'id');
+
+        // Conditionally launch add field enabled.
+        if (!$dbman->field_exists($table, $field)) {
+            $dbman->add_field($table, $field);
+        }
+
+        // Reminders savepoint reached.
+        upgrade_plugin_savepoint(true, 2017022300, 'local', 'reminders');
+    }
+
 
     return true;
 }

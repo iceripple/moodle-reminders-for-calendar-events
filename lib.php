@@ -61,16 +61,16 @@ DEFINE('REMINDERS_SEND_AS_ADMIN', 71);
 /**
  * Function to be run periodically according to the moodle cron
  * Finds all events due for a reminder and send them out to the users.
- *  
+ *
  */
 function local_reminders_cron() {
     global $CFG, $DB;
-    
+
     if (!isset($CFG->local_reminders_enable) || !$CFG->local_reminders_enable) {
         mtrace("   [Local Reminder] This cron cycle will be skipped, because plugin is not enabled!");
         return;
     }
-       
+
     $aheaddaysindex = array(7 => 0, 3 => 1, 1 => 2);
     $eventtypearray = array('site', 'user', 'course', 'due', 'group');
 
@@ -115,13 +115,13 @@ function local_reminders_cron() {
         $firstrecord = current($logrows);
         $timewindowstart = $firstrecord->time + 1;
     }
-    
+
     // end of the time window will be set as current
     $timewindowend = time();
 
     // now lets filter appropiate events to send reminders
     //
-    $secondsaheads = array(REMINDERS_7DAYSBEFORE_INSECONDS, REMINDERS_3DAYSBEFORE_INSECONDS, 
+    $secondsaheads = array(REMINDERS_7DAYSBEFORE_INSECONDS, REMINDERS_3DAYSBEFORE_INSECONDS,
         REMINDERS_1DAYBEFORE_INSECONDS);
 
     // append custom schedule if any of event categories has defined it.
@@ -144,7 +144,21 @@ function local_reminders_cron() {
         $flagor = true;
     }
     $whereclause .= ')';
-    
+
+
+    // Reminders per course?
+    if ($CFG->local_reminders_percourse) {
+        $enabledcourseids = $DB->get_fieldset_select('local_reminders_course', 'courseid', 'enabled = 1');
+        if (!$enabledcourseids) {
+            // No use continuing because there are no courses with reminders enabled.
+            mtrace("   [Local Reminder] Not enabled for any course. Aborting...");
+            add_flag_record_db($timewindowend, 'no_events');
+            return;
+        }
+        $whereclause .= sprintf(' AND courseid in (%s)', implode(',', $enabledcourseids));
+
+    }
+
     if (isset($CFG->local_reminders_filterevents)) {
         if ($CFG->local_reminders_filterevents == REMINDERS_SEND_ONLY_VISIBLE) {
             $whereclause .= 'AND visible = 1';
@@ -156,15 +170,16 @@ function local_reminders_cron() {
     //mtrace("   [Local Reminder] Where clause: ".$whereclause);
 
     $upcomingevents = $DB->get_records_select('event', $whereclause);
+
     if ($upcomingevents == false) {     // no upcoming events, so let's stop.
         mtrace("   [Local Reminder] No upcoming events. Aborting...");
 
         add_flag_record_db($timewindowend, 'no_events');
         return;
     }
-    
+
     mtrace("   [Local Reminder] Found ".count($upcomingevents)." upcoming events. Continuing...");
-    
+
     $fromuser = core_user::get_noreply_user();
     if (isset($CFG->local_reminders_sendasname) && !empty($CFG->local_reminders_sendasname)) {
         $fromuser->firstname = $CFG->local_reminders_sendasname;
@@ -173,7 +188,7 @@ function local_reminders_cron() {
         mtrace("  [Local Reminder] Sending all reminders as Admin User...");
         $fromuser = get_admin();
     }
-    
+
     // iterating through each event...
     foreach ($upcomingevents as $event) {
         $event = new calendar_event($event);
@@ -181,13 +196,13 @@ function local_reminders_cron() {
         $aheadday = 0;
         $fromcustom = false;
 
-        if ($event->timestart - REMINDERS_1DAYBEFORE_INSECONDS >= $timewindowstart && 
+        if ($event->timestart - REMINDERS_1DAYBEFORE_INSECONDS >= $timewindowstart &&
                 $event->timestart - REMINDERS_1DAYBEFORE_INSECONDS <= $timewindowend) {
             $aheadday = 1;
-        } else if ($event->timestart - REMINDERS_3DAYSBEFORE_INSECONDS >= $timewindowstart && 
+        } else if ($event->timestart - REMINDERS_3DAYSBEFORE_INSECONDS >= $timewindowstart &&
                 $event->timestart - REMINDERS_3DAYSBEFORE_INSECONDS <= $timewindowend) {
             $aheadday = 3;
-        } else if ($event->timestart - REMINDERS_7DAYSBEFORE_INSECONDS >= $timewindowstart && 
+        } else if ($event->timestart - REMINDERS_7DAYSBEFORE_INSECONDS >= $timewindowstart &&
                 $event->timestart - REMINDERS_7DAYSBEFORE_INSECONDS <= $timewindowend) {
             $aheadday = 7;
         } else {
@@ -203,7 +218,7 @@ function local_reminders_cron() {
                 }
             }
         }
-        
+
         if ($aheadday == 0) continue;
         mtrace("   [Local Reminder] Processing event#$event->id [Type: $event->eventtype, inaheadof=$aheadday days]...");
 
@@ -237,20 +252,20 @@ function local_reminders_cron() {
             mtrace("   [Local Reminder] A reminder can be sent for event#$event->id ".
                     ", detected through custom schedule.");
         }
-        
+
         $reminder = null;
         $eventdata = null;
         $sendusers = array();
-        
+
         mtrace("   [Local Reminder] Finding out users for event#".$event->id."...");
-        
+
         try {
-        
+
             switch ($event->eventtype) {
                 case 'site':
                     $reminder = new site_reminder($event, $aheadday);
-                    $sendusers = $DB->get_records_sql("SELECT * 
-                        FROM {user} 
+                    $sendusers = $DB->get_records_sql("SELECT *
+                        FROM {user}
                         WHERE id > 1 AND deleted=0 AND suspended=0 AND confirmed=1;");
                     $eventdata = $reminder->create_reminder_message_object($fromuser);
 
@@ -263,7 +278,7 @@ function local_reminders_cron() {
                         $reminder = new user_reminder($event, $user, $aheadday);
                         $eventdata = $reminder->create_reminder_message_object($fromuser);
                         $sendusers[] = $user;
-                    } 
+                    }
 
                     break;
 
@@ -295,7 +310,7 @@ function local_reminders_cron() {
                     //
                     if (isset($CFG->local_reminders_duesend) && $CFG->local_reminders_duesend == REMINDERS_ACTIVITY_ONLY_CLOSINGS) {
                         mtrace("  [Local Reminder] Reminder sending for activity openings has been restricted in the configurations.");
-                        break; 
+                        break;
                     }
 
                 case 'close':
@@ -304,7 +319,7 @@ function local_reminders_cron() {
                     //
                     if (isset($CFG->local_reminders_duesend) && $CFG->local_reminders_duesend == REMINDERS_ACTIVITY_ONLY_OPENINGS) {
                         mtrace("  [Local Reminder] Reminder sending for activity closings has been restricted in the configurations.");
-                        break; 
+                        break;
                     }
 
                 case 'due':
@@ -385,7 +400,7 @@ function local_reminders_cron() {
                             $activityobj = fetch_module_instance($event->modulename, $event->instance, $event->courseid);
                             $context = context_module::instance($cm->id); // get_context_instance(CONTEXT_MODULE, $cm->id);
                             $sendusers = get_role_users($activityroleids, $context, true, 'u.*');
-                            
+
                             //$sendusers = get_enrolled_users($context, '', $event->groupid, 'u.*');
                             $reminder = new due_reminder($event, $course, $context, $aheadday);
                             $reminder->set_activity($event->modulename, $activityobj);
@@ -402,25 +417,25 @@ function local_reminders_cron() {
             mtrace("  [Local Reminder - ERROR] ".$ex->getTraceAsString());
             continue;
         }
-        
+
         if ($eventdata == null) {
             mtrace("  [Local Reminder] Event object is not set for the event $event->id [type: $event->eventtype]");
             continue;
         }
-        
+
         $usize = count($sendusers);
         if ($usize == 0) {
             mtrace("  [Local Reminder] No users found to send reminder for the event#$event->id");
             continue;
         }
-        
+
         mtrace("  [Local Reminder] Starting sending reminders for $event->id [type: $event->eventtype]");
         $failedcount = 0;
-        
+
         foreach ($sendusers as $touser) {
             $eventdata = $reminder->set_sendto_user($touser);
             //$eventdata->userto = $touser;
-        
+
             //foreach ($touser as $key => $value) {
             //    mtrace(" User: $key : $value");
             //}
@@ -434,23 +449,23 @@ function local_reminders_cron() {
 
                 if (!$mailresult) {
                     throw new coding_exception("Could not send out message for event#$event->id to user $eventdata->userto");
-                } 
+                }
             } catch (moodle_exception $mex) {
                 $failedcount++;
                 mtrace('Error: local/reminders/lib.php local_reminders_cron(): '.$mex->getMessage());
             }
         }
-        
+
         if ($failedcount > 0) {
             mtrace("  [Local Reminder] Failed to send $failedcount reminders to users for event#$event->id");
         } else {
             mtrace("  [Local Reminder] All reminders was sent successfully for event#$event->id !");
         }
-        
+
         unset($sendusers);
-        
+
     }
-    
+
     //add_to_log(0, 'local_reminders', 'cron', '', $timewindowend, 0, 0);
     add_flag_record_db($timewindowend, 'sent');
 }
@@ -496,20 +511,20 @@ function add_flag_record_db($timewindowend, $crontype = '') {
 
 /**
  * Function to retrive module instace from corresponding module
- * table. This function is written because when sending reminders 
+ * table. This function is written because when sending reminders
  * it can restrict showing some fields in the message which are sensitive
  * to user. (Such as some descriptions are hidden until defined date)
  * Function is very similar to the function in datalib.php/get_coursemodule_from_instance,
  * but by below it returns all fields of the module.
- * 
+ *
  * Eg: can get the quiz instace from quiz table, can get the new assignment
  * instace from assign table, etc.
- * 
+ *
  * @param string $modulename name of module type, eg. resource, assignment,...
  * @param int $instance module instance number (id in resource, assignment etc. table)
  * @param int $courseid optional course id for extra validation
- * 
- * @return individual module instance (a quiz, a assignment, etc). 
+ *
+ * @return individual module instance (a quiz, a assignment, etc).
  *          If fails returns null
  */
 function fetch_module_instance($modulename, $instance, $courseid=0) {
@@ -541,9 +556,9 @@ function fetch_module_instance($modulename, $instance, $courseid=0) {
 
 /**
  * Returns true if input string is empty/whitespaces only, otherwise false.
- * 
+ *
  * @param type $str string
- * 
+ *
  * @return boolean true if string is empty or whitespace
  */
 function isemptyString($str) {
@@ -552,17 +567,17 @@ function isemptyString($str) {
 
 function local_reminders_extend_settings_navigation($settingsnav, $context) {
     global $PAGE;
- 
+
     // Only add this settings item on non-site course pages.
     if (!$PAGE->course or $PAGE->course->id == 1) {
         return;
     }
- 
+
     // Only let users with the appropriate capability see this settings item.
     if (!has_capability('moodle/course:update', context_course::instance($PAGE->course->id))) {
         return;
     }
- 
+
     if ($settingnode = $settingsnav->find('courseadmin', navigation_node::TYPE_COURSE)) {
         $name = get_string('admintreelabel', 'local_reminders');
         $url = new moodle_url('/local/reminders/coursesettings.php', array('courseid' => $PAGE->course->id));

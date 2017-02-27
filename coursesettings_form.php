@@ -1,5 +1,4 @@
 <?php
-
 // This file is part of Moodle - http://moodle.org/
 //
 // Moodle is free software: you can redistribute it and/or modify
@@ -27,21 +26,39 @@ require_once($CFG->libdir.'/formslib.php');
 
 class local_reminders_coursesettings_edit_form extends moodleform {
 
-	function definition() {
+    public function definition() {
+        global $CFG;
         $mform = $this->_form;
         list($coursesettings) = $this->_customdata;
 
-        // $mform->addElement('header', 'header', 'ueberschrift');
+        $percourse = $CFG->local_reminders_percourse;
 
-        $mform->addElement('advcheckbox', 'status_course', get_string('enabled', 'local_reminders'), get_string('courseheading', 'local_reminders'));
+        if ($percourse) {
+            $mform->addElement('advcheckbox', 'enabled', get_string('enableforcourse', 'local_reminders'),
+                    get_string('enable', 'local_reminders'));
+            $mform->setDefault('status_course', 0);
+        }
+
+        $mform->addElement('advcheckbox', 'status_course', get_string('enabled', 'local_reminders'),
+                get_string('courseheading', 'local_reminders'));
         $mform->setDefault('status_course', 1);
-        // $mform->addHelpButton('status_course', 'status_course', 'status_course');
-        
-        $mform->addElement('advcheckbox', 'status_activities', get_string('enabled', 'local_reminders'), get_string('dueheading', 'local_reminders'));
-        $mform->setDefault('status_activities', 1);
+        if ($percourse) {
+            $mform->disabledIf('status_course', 'enabled');
+        }
 
-        $mform->addElement('advcheckbox', 'status_group', get_string('enabled', 'local_reminders'), get_string('groupheading', 'local_reminders'));
+        $mform->addElement('advcheckbox', 'status_activities', get_string('enabled', 'local_reminders'),
+                get_string('dueheading', 'local_reminders'));
+        $mform->setDefault('status_activities', 1);
+        if ($percourse) {
+            $mform->disabledIf('status_activities', 'enabled');
+        }
+
+        $mform->addElement('advcheckbox', 'status_group', get_string('enabled', 'local_reminders'),
+                get_string('groupheading', 'local_reminders'));
         $mform->setDefault('status_group', 1);
+        if ($percourse) {
+            $mform->disabledIf('status_group', 'enabled');
+        }
 
         $mform->addElement('hidden', 'courseid');
         $mform->setType('courseid', PARAM_INT);
